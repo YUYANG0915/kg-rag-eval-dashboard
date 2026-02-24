@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KG-RAG Evaluation Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap');
+
+  :root {
+    --bg: #0a0e1a;
+    --surface: #111827;
+    --surface2: #1a2233;
+    --border: #1e2d45;
+    --accent: #00d4ff;
+    --accent2: #7c3aed;
+    --accent3: #10b981;
+    --accent4: #f59e0b;
+    --text: #e2e8f0;
+    --text-dim: #64748b;
+    --closed-color: #60a5fa;
+    --open-color: #34d399;
+    --norag: #6366f1;
+    --rag: #f97316;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* HEADER */
+  .header {
+    background: linear-gradient(135deg, #0a0e1a 0%, #0f172a 50%, #0a1628 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 36px 48px 28px;
+    position: relative;
+    overflow: hidden;
+  }
+  .header::before {
+    content: '';
+    position: absolute;
+    top: -80px; right: -80px;
+    width: 320px; height: 320px;
+    background: radial-gradient(circle, rgba(0,212,255,0.08) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .header::after {
+    content: '';
+    position: absolute;
+    bottom: -60px; left: 30%;
+    width: 240px; height: 240px;
+    background: radial-gradient(circle, rgba(124,58,237,0.06) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .header-tag {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    opacity: 0.8;
+  }
+  .header h1 {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    color: #fff;
+    margin-bottom: 6px;
+  }
+  .header h1 span { color: var(--accent); }
+  .header-sub {
+    font-size: 13px;
+    color: var(--text-dim);
+    font-weight: 300;
+  }
+  .header-stats {
+    display: flex;
+    gap: 32px;
+    margin-top: 20px;
+  }
+  .hstat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .hstat-val {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--accent);
+  }
+  .hstat-label {
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  /* NAV TABS */
+  .nav {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 48px;
+    display: flex;
+    gap: 0;
+    overflow-x: auto;
+  }
+  .nav-tab {
+    padding: 14px 20px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    white-space: nowrap;
+    background: none;
+    border-left: none; border-right: none; border-top: none;
+  }
+  .nav-tab:hover { color: var(--text); border-bottom-color: var(--border); }
+  .nav-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  /* MAIN CONTENT */
+  .content { padding: 32px 48px; }
+  .section { display: none; }
+  .section.active { display: block; }
+
+  /* GRID */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+  .grid-1 { display: grid; grid-template-columns: 1fr; gap: 20px; margin-bottom: 20px; }
+
+  /* CARD */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 22px 24px;
+    position: relative;
+    overflow: hidden;
+  }
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent) 0%, transparent 100%);
+    opacity: 0.5;
+  }
+  .card.accent2::before { background: linear-gradient(90deg, var(--accent2) 0%, transparent 100%); }
+  .card.accent3::before { background: linear-gradient(90deg, var(--accent3) 0%, transparent 100%); }
+  .card.accent4::before { background: linear-gradient(90deg, var(--accent4) 0%, transparent 100%); }
+
+  .card-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-dim);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card-title span { color: var(--accent); font-family: 'IBM Plex Mono', monospace; }
+
+  /* CHART containers */
+  .chart-wrap { position: relative; width: 100%; }
+  .chart-wrap canvas { width: 100% !important; }
+
+  /* LEGEND */
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 14px;
+    justify-content: center;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .legend-dot {
+    width: 8px; height: 8px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  /* METRIC CARDS */
+  .metric-row { display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+  .metric-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 18px;
+    flex: 1;
+    min-width: 120px;
+  }
+  .metric-val {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--accent);
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+  .metric-val.green { color: var(--accent3); }
+  .metric-val.amber { color: var(--accent4); }
+  .metric-val.purple { color: #a78bfa; }
+  .metric-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
+
+  /* TABLE */
+  .data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .data-table th {
+    text-align: left;
+    padding: 8px 12px;
+    color: var(--text-dim);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+  }
+  .data-table td {
+    padding: 9px 12px;
+    border-bottom: 1px solid rgba(30,45,69,0.5);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+  }
+  .data-table tr:hover td { background: rgba(0,212,255,0.03); }
+  .badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 600;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .badge-closed { background: rgba(96,165,250,0.15); color: #60a5fa; }
+  .badge-open { background: rgba(52,211,153,0.15); color: #34d399; }
+  .pos { color: var(--accent3); }
+  .neg { color: #f87171; }
+
+  /* SECTION TITLE */
+  .section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .section-title::before {
+    content: '';
+    display: block;
+    width: 3px; height: 16px;
+    background: var(--accent);
+    border-radius: 2px;
+  }
+
+  /* WIN BAR */
+  .win-bar-wrap { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+  .win-bar-bg { flex: 1; height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+  .win-bar-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--accent3), var(--accent)); }
+  .win-bar-val { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text); width: 38px; text-align: right; }
+
+  /* SPIDER CHART NOTE */
+  .note { font-size: 11px; color: var(--text-dim); margin-top: 8px; font-style: italic; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-tag">// Evaluation Report</div>
+  <h1>KG-RAG <span>Evaluation</span> Dashboard</h1>
+  <div class="header-sub">Knowledge Graph Retrieval-Augmented Generation · 6 Models · 515 Questions × 2 Modes</div>
+  <div class="header-stats">
+    <div class="hstat"><span class="hstat-val">6</span><span class="hstat-label">Models</span></div>
+    <div class="hstat"><span class="hstat-val">3,090</span><span class="hstat-label">Evaluations</span></div>
+    <div class="hstat"><span class="hstat-val">5</span><span class="hstat-label">Dimensions</span></div>
+    <div class="hstat"><span class="hstat-val">26.5%</span><span class="hstat-label">Overall Win Rate</span></div>
+  </div>
+</div>
+
+<nav class="nav">
+  <button class="nav-tab active" onclick="switchTab('overview')">Overview</button>
+  <button class="nav-tab" onclick="switchTab('dimensions')">Dimensions</button>
+  <button class="nav-tab" onclick="switchTab('delta')">RAG Impact</button>
+  <button class="nav-tab" onclick="switchTab('winloss')">Win-Loss</button>
+  <button class="nav-tab" onclick="switchTab('oracle')">Oracle Analysis</button>
+  <button class="nav-tab" onclick="switchTab('refusal')">Refusal Rate</button>
+</nav>
+
+<div class="content">
+
+  <!-- ============ OVERVIEW ============ -->
+  <div class="section active" id="sec-overview">
+    <div class="section-title">Overall Performance · NoRAG vs KG-RAG</div>
+
+    <div class="metric-row">
+      <div class="metric-card">
+        <div class="metric-val">3.95</div>
+        <div class="metric-label">Best RAG Score — Llama</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-val green">+0.41</div>
+        <div class="metric-label">Max RAG Gain — Llama</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-val amber">51.9%</div>
+        <div class="metric-label">Best Win Rate — Claude</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-val purple">3.85</div>
+        <div class="metric-label">Best Open Model — Mistral</div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title"><span>01</span> AVG Score — NoRAG vs KG-RAG</div>
+        <div class="chart-wrap"><canvas id="chartOverviewBar" height="260"></canvas></div>
+      </div>
+      <div class="card accent2">
+        <div class="card-title"><span>02</span> Closed vs Open Model Comparison</div>
+        <div class="chart-wrap"><canvas id="chartTypeCompare" height="260"></canvas></div>
+      </div>
+    </div>
+
+    <div class="grid-1">
+      <div class="card accent3">
+        <div class="card-title"><span>03</span> Detailed Score Table</div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Model</th><th>Type</th>
+              <th>NoRAG Accuracy</th><th>NoRAG Comp.</th><th>NoRAG Rele.</th><th>NoRAG Evid.</th><th>NoRAG Depth</th><th>NoRAG AVG</th>
+              <th>RAG Accuracy</th><th>RAG Comp.</th><th>RAG Rele.</th><th>RAG Evid.</th><th>RAG Depth</th><th>RAG AVG</th>
+              <th>ΔAVG</th>
+            </tr>
+          </thead>
+          <tbody id="scoreTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ DIMENSIONS ============ -->
+  <div class="section" id="sec-dimensions">
+    <div class="section-title">Dimension-Level Analysis</div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title"><span>01</span> NoRAG — Radar by Model</div>
+        <div class="chart-wrap"><canvas id="chartRadarNoRAG" height="300"></canvas></div>
+      </div>
+      <div class="card accent2">
+        <div class="card-title"><span>02</span> KG-RAG — Radar by Model</div>
+        <div class="chart-wrap"><canvas id="chartRadarRAG" height="300"></canvas></div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card accent3">
+        <div class="card-title"><span>03</span> Accuracy: NoRAG vs RAG</div>
+        <div class="chart-wrap"><canvas id="chartDimAccuracy" height="220"></canvas></div>
+      </div>
+      <div class="card accent4">
+        <div class="card-title"><span>04</span> Completeness: NoRAG vs RAG</div>
+        <div class="chart-wrap"><canvas id="chartDimComp" height="220"></canvas></div>
+      </div>
+    </div>
+
+    <div class="grid-3">
+      <div class="card">
+        <div class="card-title"><span>05</span> Relevance</div>
+        <div class="chart-wrap"><canvas id="chartDimRele" height="200"></canvas></div>
+      </div>
+      <div class="card accent2">
+        <div class="card-title"><span>06</span> Evidence</div>
+        <div class="chart-wrap"><canvas id="chartDimEvid" height="200"></canvas></div>
+      </div>
+      <div class="card accent3">
+        <div class="card-title"><span>07</span> Depth</div>
+        <div class="chart-wrap"><canvas id="chartDimDepth" height="200"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ DELTA ============ -->
+  <div class="section" id="sec-delta">
+    <div class="section-title">RAG Impact · Δ (KG-RAG minus NoRAG)</div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title"><span>01</span> ΔAVG by Model</div>
+        <div class="chart-wrap"><canvas id="chartDeltaAVG" height="250"></canvas></div>
+      </div>
+      <div class="card accent2">
+        <div class="card-title"><span>02</span> Delta per Dimension (Heatmap-style)</div>
+        <div class="chart-wrap"><canvas id="chartDeltaHeatmap" height="250"></canvas></div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card accent3">
+        <div class="card-title"><span>03</span> ΔAVG by QA Type</div>
+        <div class="chart-wrap"><canvas id="chartDeltaQA" height="260"></canvas></div>
+      </div>
+      <div class="card accent4">
+        <div class="card-title"><span>04</span> KG Injection Effect</div>
+        <div class="chart-wrap"><canvas id="chartInjection" height="260"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ WIN-LOSS ============ -->
+  <div class="section" id="sec-winloss">
+    <div class="section-title">Win-Loss Analysis</div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title"><span>01</span> Win / Tie / Loss by Model</div>
+        <div class="chart-wrap"><canvas id="chartWinLossBar" height="280"></canvas></div>
+      </div>
+      <div class="card accent2">
+        <div class="card-title"><span>02</span> Win Rate % by Model</div>
+        <div id="winRateList" style="margin-top:4px;"></div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card accent3">
+        <div class="card-title"><span>03</span> Win / Tie / Loss by QA Type</div>
+        <div class="chart-wrap"><canvas id="chartWinLossType" height="260"></canvas></div>
+      </div>
+      <div class="card accent4">
+        <div class="card-title"><span>04</span> Win Rate by QA Type</div>
+        <div class="chart-wrap"><canvas id="chartWinRateType" height="260"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ ORACLE ============ -->
+  <div class="section" id="sec-oracle">
+    <div class="section-title">Oracle Analysis · Upper Bound Comparison</div>
+
+    <div class="metric-row">
+      <div class="metric-card">
+        <div class="metric-val">3.64</div>
+        <div class="metric-label">Highest Oracle — Claude</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-val green">+0.38</div>
+        <div class="metric-label">Best Oracle Δ — Claude</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-val amber">−0.318</div>
+        <div class="metric-label">Largest Gap — Llama</div>
+      </div>
+    </div>
+    <p class="note" style="margin-bottom:20px;">Oracle AVG = performance when the correct document is always retrieved. Gap to Oracle = Oracle AVG − RAG AVG (negative means RAG already exceeds oracle estimate).</p>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title"><span>01</span> NoRAG / RAG / Oracle AVG</div>
+        <div class="chart-wrap"><canvas id="chartOracleBar" height="280"></canvas></div>
+      </div>
+      <div class="card accent2">
+        <div class="card-title"><span>02</span> Gap to Oracle</div>
+        <div class="chart-wrap"><canvas id="chartGapOracle" height="280"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ REFUSAL ============ -->
+  <div class="section" id="sec-refusal">
+    <div class="section-title">Refusal Rate Analysis</div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title"><span>01</span> Refusal Rate % by Model & Mode</div>
+        <div class="chart-wrap"><canvas id="chartRefusal" height="300"></canvas></div>
+      </div>
+      <div class="card accent2">
+        <div class="card-title"><span>02</span> Total Refusals Distribution</div>
+        <div class="chart-wrap"><canvas id="chartRefusalPie" height="300"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /content -->
+
+<script>
+// ======== DATA ========
+const models = ['claude-sonnet-4','gpt-4o','gemini-2.0-flash','llama-3.3-70b','qwen2.5-72b','mistral-small-3.1'];
+const shortModels = ['Claude','GPT-4o','Gemini','Llama','Qwen','Mistral'];
+const types = ['Closed','Closed','Closed','Open','Open','Open'];
+const dims = ['Accuracy','Completeness','Relevance','Evidence','Depth'];
+
+const norag = [
+  [3.74,2.23,4.23,2.95,3.16],
+  [3.61,2.39,4.68,2.94,3.23],
+  [3.54,2.42,4.45,3.18,3.39],
+  [3.42,2.43,4.61,3.55,3.71],
+  [3.44,2.29,4.63,2.78,2.73],
+  [3.54,2.48,4.67,3.47,3.50],
+];
+const rag = [
+  [4.21,2.62,4.25,3.11,3.21],
+  [4.33,2.74,4.50,3.12,3.21],
+  [3.96,2.89,4.88,3.28,3.29],
+  [4.24,2.95,4.93,3.63,3.99],
+  [3.96,2.64,4.76,2.68,2.89],
+  [4.17,2.76,4.82,3.78,3.72],
+];
+const noragAVG = [3.26,3.37,3.40,3.54,3.17,3.53];
+const ragAVG   = [3.48,3.58,3.66,3.95,3.39,3.85];
+const deltaAVG = [0.22,0.21,0.26,0.41,0.22,0.32];
+const delta = [
+  [0.47,0.39,0.02,0.16,0.05],
+  [0.72,0.35,-0.18,0.18,-0.02],
+  [0.42,0.47,0.43,0.10,-0.10],
+  [0.82,0.52,0.32,0.08,0.28],
+  [0.52,0.35,0.13,-0.10,0.16],
+  [0.63,0.28,0.15,0.31,0.22],
+];
+
+const winData = [
+  {model:'Claude', wins:267, ties:139, losses:108, total:514, wr:51.9},
+  {model:'GPT-4o', wins:129, ties:167, losses:218, total:514, wr:25.1},
+  {model:'Gemini', wins:74, ties:99, losses:341, total:514, wr:14.4},
+  {model:'Llama',  wins:106, ties:110, losses:298, total:514, wr:20.6},
+  {model:'Qwen',   wins:140, ties:157, losses:217, total:514, wr:27.2},
+  {model:'Mistral',wins:102, ties:170, losses:242, total:514, wr:19.8},
+];
+const winByType = [
+  {type:'Diagnosis', wins:266, ties:259, losses:513, wr:25.6},
+  {type:'Factual',   wins:79,  ties:85,  losses:154, wr:24.8},
+  {type:'Outcome',   wins:206, ties:185, losses:359, wr:27.5},
+  {type:'Treatment', wins:217, ties:249, losses:332, wr:27.2},
+  {type:'Reasoning', wins:50,  ties:64,  losses:66,  wr:27.8},
+];
+
+const oracleData = [
+  {model:'Claude', norag:3.26, rag:3.48, oracle:3.64, gap:0.160},
+  {model:'GPT-4o', norag:3.37, rag:3.58, oracle:3.43, gap:-0.150},
+  {model:'Gemini', norag:3.40, rag:3.66, oracle:3.43, gap:-0.230},
+  {model:'Llama',  norag:3.54, rag:3.95, oracle:3.632,gap:-0.318},
+  {model:'Qwen',   norag:3.17, rag:3.39, oracle:3.261,gap:-0.129},
+  {model:'Mistral',norag:3.53, rag:3.85, oracle:3.564,gap:-0.286},
+];
+
+const refuseData = [
+  {model:'Claude', norag:36.7, rag:34.4},
+  {model:'GPT-4o', norag:1.6, rag:1.6},
+  {model:'Gemini', norag:11.7, rag:18.3},
+  {model:'Llama',  norag:0.0, rag:0.4},
+  {model:'Qwen',   norag:0.0, rag:0.6},
+  {model:'Mistral',norag:0.2, rag:0.2},
+];
+
+const qaTypes = ['Diagnosis','Factual','Outcome','Treatment','Reasoning'];
+const byQA = [
+  [0.05,0.06,0.02,0.12,-0.03],   // claude
+  [-0.01,-0.03,-0.04,-0.05,-0.05], // gpt
+  [-0.18,-0.18,-0.12,-0.17,-0.03], // gemini
+  [-0.03,0.03,-0.11,-0.11,-0.11],  // llama
+  [-0.07,0.03,-0.03,-0.06,-0.11],  // qwen
+  [-0.05,-0.05,-0.06,0.02,-0.03],  // mistral
+];
+
+const injData = {
+  groups: ['No-RAG','KG-Injected','KG-Skipped'],
+  accuracy: [3.54,3.60,3.52],
+  comp:     [2.37,2.19,2.29],
+  rele:     [4.54,4.32,4.50],
+  evid:     [3.15,3.04,3.06],
+  depth:    [3.29,3.09,3.25],
+  avg:      [3.38,3.25,3.32],
+};
+
+// ======== COLORS ========
+const modelColors = ['#00d4ff','#a78bfa','#10b981','#f59e0b','#f87171','#60a5fa'];
+const modelColorsA = modelColors.map(c => c + '22');
+
+// ======== CHART DEFAULTS ========
+Chart.defaults.color = '#64748b';
+Chart.defaults.borderColor = '#1e2d45';
+Chart.defaults.font.family = "'IBM Plex Mono', monospace";
+Chart.defaults.font.size = 11;
+
+function barDefaults(labels, ds, opts={}) {
+  return {
+    type: 'bar',
+    data: { labels, datasets: ds },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: { legend: { display: opts.legend ?? true, position:'top', labels:{boxWidth:10,padding:12,font:{size:10}} }, tooltip: { mode:'index' } },
+      scales: {
+        x: { grid:{color:'#1e2d45'}, ticks:{font:{size:10}} },
+        y: { grid:{color:'#1e2d45'}, min: opts.ymin ?? undefined, max: opts.ymax ?? undefined, ticks:{font:{size:10}} }
+      },
+      ...opts
+    }
+  };
+}
+
+// ======== POPULATE TABLE ========
+const tbody = document.getElementById('scoreTableBody');
+models.forEach((m, i) => {
+  const d = deltaAVG[i];
+  const dSign = d >= 0 ? '+' : '';
+  tbody.innerHTML += `<tr>
+    <td style="color:#e2e8f0;font-family:'IBM Plex Sans',sans-serif;font-weight:600">${shortModels[i]}</td>
+    <td><span class="badge badge-${types[i].toLowerCase()}">${types[i]}</span></td>
+    <td>${norag[i][0]}</td><td>${norag[i][1]}</td><td>${norag[i][2]}</td><td>${norag[i][3]}</td><td>${norag[i][4]}</td>
+    <td style="color:#94a3b8;font-weight:600">${noragAVG[i]}</td>
+    <td>${rag[i][0]}</td><td>${rag[i][1]}</td><td>${rag[i][2]}</td><td>${rag[i][3]}</td><td>${rag[i][4]}</td>
+    <td style="color:#00d4ff;font-weight:600">${ragAVG[i]}</td>
+    <td class="${d>=0?'pos':'neg'}">${dSign}${d.toFixed(2)}</td>
+  </tr>`;
+});
+
+// ======== WIN RATE LIST ========
+const wrl = document.getElementById('winRateList');
+winData.forEach(d => {
+  wrl.innerHTML += `<div style="margin-bottom:12px">
+    <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+      <span style="font-size:12px;color:#e2e8f0;font-weight:600">${d.model}</span>
+      <span style="font-size:11px;color:#64748b">${d.wins}W / ${d.ties}T / ${d.losses}L</span>
+    </div>
+    <div class="win-bar-wrap">
+      <div class="win-bar-bg"><div class="win-bar-fill" style="width:${d.wr}%"></div></div>
+      <div class="win-bar-val">${d.wr}%</div>
+    </div>
+  </div>`;
+});
+
+// ======== CHART 01: Overview Bar ========
+new Chart(document.getElementById('chartOverviewBar'), barDefaults(
+  shortModels,
+  [
+    { label:'NoRAG AVG', data: noragAVG, backgroundColor: 'rgba(99,102,241,0.7)', borderColor:'#6366f1', borderWidth:1, borderRadius:3 },
+    { label:'KG-RAG AVG', data: ragAVG, backgroundColor: 'rgba(249,115,22,0.7)', borderColor:'#f97316', borderWidth:1, borderRadius:3 },
+  ],
+  { ymin:2.8, ymax:4.2 }
+));
+
+// ======== CHART 02: Type Compare ========
+new Chart(document.getElementById('chartTypeCompare'), {
+  type: 'bar',
+  data: {
+    labels: shortModels,
+    datasets: [
+      { label:'NoRAG', data: noragAVG, backgroundColor: noragAVG.map((_,i) => types[i]==='Closed' ? 'rgba(96,165,250,0.6)' : 'rgba(52,211,153,0.6)'), borderWidth:1, borderRadius:3 },
+      { label:'RAG',   data: ragAVG,   backgroundColor: ragAVG.map((_,i)   => types[i]==='Closed' ? 'rgba(96,165,250,0.9)' : 'rgba(52,211,153,0.9)'), borderWidth:1, borderRadius:3 },
+    ]
+  },
+  options: {
+    responsive:true, maintainAspectRatio:true,
+    plugins:{ legend:{display:true,position:'top',labels:{boxWidth:10,padding:12,font:{size:10}}},
+      tooltip:{mode:'index'},
+      title:{display:true,text:'Blue=Closed · Green=Open',color:'#64748b',font:{size:10}}
+    },
+    scales:{ x:{grid:{color:'#1e2d45'}}, y:{grid:{color:'#1e2d45'},min:2.8,max:4.2} }
+  }
+});
+
+// ======== RADAR CHARTS ========
+function radarChart(id, dataset) {
+  new Chart(document.getElementById(id), {
+    type:'radar',
+    data:{
+      labels: dims,
+      datasets: models.map((m,i) => ({
+        label: shortModels[i],
+        data: dataset[i],
+        borderColor: modelColors[i],
+        backgroundColor: modelColors[i]+'18',
+        borderWidth:1.5,
+        pointBackgroundColor: modelColors[i],
+        pointRadius:3,
+      }))
+    },
+    options:{
+      responsive:true, maintainAspectRatio:true,
+      plugins:{legend:{position:'bottom',labels:{boxWidth:8,padding:10,font:{size:10}}}},
+      scales:{r:{
+        min:1.5, max:5.5,
+        grid:{color:'#1e2d45'},
+        angleLines:{color:'#1e2d45'},
+        ticks:{backdropColor:'transparent',color:'#64748b',font:{size:9}},
+        pointLabels:{color:'#94a3b8',font:{size:11}}
+      }}
+    }
+  });
+}
+radarChart('chartRadarNoRAG', norag);
+radarChart('chartRadarRAG', rag);
+
+// ======== DIM CHARTS ========
+function dimChart(id, dimIdx) {
+  new Chart(document.getElementById(id), barDefaults(
+    shortModels,
+    [
+      {label:'NoRAG', data: norag.map(r=>r[dimIdx]), backgroundColor:'rgba(99,102,241,0.65)', borderColor:'#6366f1', borderWidth:1, borderRadius:3},
+      {label:'RAG',   data: rag.map(r=>r[dimIdx]),   backgroundColor:'rgba(249,115,22,0.65)',  borderColor:'#f97316', borderWidth:1, borderRadius:3},
+    ],
+    { ymin: 1.5, ymax: 5.5 }
+  ));
+}
+dimChart('chartDimAccuracy',0);
+dimChart('chartDimComp',1);
+dimChart('chartDimRele',2);
+dimChart('chartDimEvid',3);
+dimChart('chartDimDepth',4);
+
+// ======== DELTA AVG ========
+new Chart(document.getElementById('chartDeltaAVG'), {
+  type:'bar',
+  data:{
+    labels: shortModels,
+    datasets:[{
+      label:'ΔAVG',
+      data: deltaAVG,
+      backgroundColor: deltaAVG.map(v => v>=0 ? 'rgba(16,185,129,0.7)' : 'rgba(248,113,113,0.7)'),
+      borderColor: deltaAVG.map(v => v>=0 ? '#10b981' : '#f87171'),
+      borderWidth:1, borderRadius:3,
+    }]
+  },
+  options:{
+    responsive:true, maintainAspectRatio:true,
+    plugins:{legend:{display:false}},
+    scales:{
+      x:{grid:{color:'#1e2d45'}},
+      y:{grid:{color:'#1e2d45'}, min:-0.2, max:0.6,
+         ticks:{callback:v=>v>=0?'+'+v:v}}
+    }
+  }
+});
+
+// ======== DELTA HEATMAP (grouped bar) ========
+new Chart(document.getElementById('chartDeltaHeatmap'), {
+  type:'bar',
+  data:{
+    labels: dims,
+    datasets: models.map((m,i) => ({
+      label: shortModels[i],
+      data: delta[i],
+      backgroundColor: modelColors[i]+'99',
+      borderColor: modelColors[i],
+      borderWidth:1, borderRadius:2,
+    }))
+  },
+  options:{
+    responsive:true, maintainAspectRatio:true,
+    plugins:{legend:{position:'bottom',labels:{boxWidth:8,padding:10,font:{size:10}}}},
+    scales:{
+      x:{grid:{color:'#1e2d45'}},
+      y:{grid:{color:'#1e2d45'}, ticks:{callback:v=>v>=0?'+'+v:v}}
+    }
+  }
+});
+
+// ======== DELTA QA TYPE ========
+new Chart(document.getElementById('chartDeltaQA'), {
+  type:'bar',
+  data:{
+    labels: qaTypes,
+    datasets: models.map((m,i) => ({
+      label: shortModels[i],
+      data: byQA[i],
+      backgroundColor: modelColors[i]+'99',
+      borderColor: modelColors[i],
+      borderWidth:1, borderRadius:2,
+    }))
+  },
+  options:{
+    responsive:true, maintainAspectRatio:true,
+    plugins:{legend:{position:'bottom',labels:{boxWidth:8,padding:10,font:{size:10}}}},
+    scales:{
+      x:{grid:{color:'#1e2d45'}},
+      y:{grid:{color:'#1e2d45'}, ticks:{callback:v=>(v>=0?'+':'')+v}}
+    }
+  }
+});
+
+// ======== INJECTION ========
+new Chart(document.getElementById('chartInjection'), {
+  type:'bar',
+  data:{
+    labels: injData.groups,
+    datasets: dims.map((d,i) => ({
+      label: d,
+      data: [injData.accuracy,injData.comp,injData.rele,injData.evid,injData.depth][i],
+      backgroundColor: modelColors[i]+'99',
+      borderColor: modelColors[i],
+      borderWidth:1, borderRadius:2,
+    }))
+  },
+  options:{
+    responsive:true, maintainAspectRatio:true,
+    plugins:{legend:{position:'bottom',labels:{boxWidth:8,padding:10,font:{size:10}}}},
+    scales:{
+      x:{grid:{color:'#1e2d45'}},
+      y:{grid:{color:'#1e2d45'}, min:1.5, max:5.5}
+    }
+  }
+});
+
+// ======== WIN-LOSS BAR ========
+new Chart(document.getElementById('chartWinLossBar'), {
+  type:'bar',
+  data:{
+    labels: winData.map(d=>d.model),
+    datasets:[
+      {label:'Wins',   data:winData.map(d=>d.wins),   backgroundColor:'rgba(16,185,129,0.75)',  borderColor:'#10b981', borderWidth:1, borderRadius:3},
+      {label:'Ties',   data:winData.map(d=>d.ties),   backgroundColor:'rgba(100,116,139,0.6)', borderColor:'#64748b', borderWidth:1, borderRadius:3},
+      {label:'Losses', data:winData.map(d=>d.losses), backgroundColor:'rgba(248,113,113,0.75)', borderColor:'#f87171', borderWidth:1, borderRadius:3},
+    ]
+  },
+  options:{
+    responsive:true, maintainAspectRatio:true,
+    plugins:{legend:{position:'top',labels:{boxWidth:10,padding:12,font:{size:10}}}},
+    scales:{
+      x:{grid:{color:'#1e2d45'}, stacked:true},
+      y:{grid:{color:'#1e2d45'}, stacked:true}
+    }
+  }
+});
+
+// ======== WIN-LOSS by TYPE ========
+new Chart(document.getElementById('chartWinLossType'), {
+  type:'bar',
+  data:{
+    labels: winByType.map(d=>d.type),
+    datasets:[
+      {label:'Wins',   data:winByType.map(d=>d.wins),   backgroundColor:'rgba(16,185,129,0.75)',  borderColor:'#10b981', borderWidth:1, borderRadius:3},
+      {label:'Ties',   data:winByType.map(d=>d.ties),   backgroundColor:'rgba(100,116,139,0.6)', borderColor:'#64748b', borderWidth:1, borderRadius:3},
+      {label:'Losses', data:winByType.map(d=>d.losses), backgroundColor:'rgba(248,113,113,0.75)', borderColor:'#f87171', borderWidth:1, borderRadius:3},
+    ]
+  },
+  options:{
+    responsive:true, maintainAspectRatio:true,
+    plugins:{legend:{position:'top',labels:{boxWidth:10,padding:12,font:{size:10}}}},
+    scales:{
+      x:{grid:{color:'#1e2d45'},stacked:true},
+      y:{grid:{color:'#1e2d45'},stacked:true}
+    }
+  }
+});
+
+// ======== WIN RATE by TYPE ========
+new Chart(document.getElementById('chartWinRateType'), {
+  type:'bar',
+  data:{
+    labels: winByType.map(d=>d.type),
+    datasets:[{
+      label:'Win Rate %',
+      data: winByType.map(d=>d.wr),
+      backgroundColor: winByType.map(d => d.wr>=27?'rgba(0,212,255,0.7)':'rgba(124,58,237,0.7)'),
+      borderColor: winByType.map(d => d.wr>=27?'#00d4ff':'#7c3aed'),
+      borderWidth:1, borderRadius:3,
+    }]
+  },
+  options:{
+    responsive:true, maintainAspectRatio:true,
+    plugins:{legend:{display:false}},
+    scales:{
+      x:{grid:{color:'#1e2d45'}},
+      y:{grid:{color:'#1e2d45'}, min:20, max:32, ticks:{callback:v=>v+'%'}}
+    }
+  }
+});
+
+// ======== ORACLE BAR ========
+new Chart(document.getElementById('chartOracleBar'), {
+  type:'bar',
+  data:{
+    labels: oracleData.map(d=>d.model),
+    datasets:[
+      {label:'NoRAG',  data:oracleData.map(d=>d.norag),  backgroundColor:'rgba(99,102,241,0.65)',  borderColor:'#6366f1', borderWidth:1, borderRadius:3},
+      {label:'KG-RAG', data:oracleData.map(d=>d.rag),    backgroundColor:'rgba(249,115,22,0.65)',  borderColor:'#f97316', borderWidth:1, borderRadius:3},
+      {label:'Oracle', data:oracleData.map(d=>d.oracle), backgroundColor:'rgba(0,212,255,0.35)',   borderColor:'#00d4ff', borderWidth:1.5, borderRadius:3, borderDash:[4,4]},
+    ]
+  },
+  options:{
+    responsive:true, maintainAspectRatio:true,
+    plugins:{legend:{position:'top',labels:{boxWidth:10,padding:12,font:{size:10}}}},
+    scales:{
+      x:{grid:{color:'#1e2d45'}},
+      y:{grid:{color:'#1e2d45'}, min:2.8, max:4.2}
+    }
+  }
+});
+
+// ======== GAP TO ORACLE ========
+new Chart(document.getElementById('chartGapOracle'), {
+  type:'bar',
+  data:{
+    labels: oracleData.map(d=>d.model),
+    datasets:[{
+      label:'Gap to Oracle (Oracle − RAG)',
+      data: oracleData.map(d=>d.gap),
+      backgroundColor: oracleData.map(d => d.gap>=0 ? 'rgba(248,113,113,0.7)' : 'rgba(16,185,129,0.7)'),
+      borderColor:     oracleData.map(d => d.gap>=0 ? '#f87171' : '#10b981'),
+      borderWidth:1, borderRadius:3,
+    }]
+  },
+  options:{
+    responsive:true, maintainAspectRatio:true,
+    plugins:{legend:{display:false},
+      tooltip:{callbacks:{label:ctx=>`Gap: ${ctx.parsed.y>=0?'+':''}${ctx.parsed.y.toFixed(3)}`}}},
+    scales:{
+      x:{grid:{color:'#1e2d45'}},
+      y:{grid:{color:'#1e2d45'}, ticks:{callback:v=>(v>=0?'+':'')+v.toFixed(2)}}
+    }
+  }
+});
+
+// ======== REFUSAL BAR ========
+new Chart(document.getElementById('chartRefusal'), {
+  type:'bar',
+  data:{
+    labels: refuseData.map(d=>d.model),
+    datasets:[
+      {label:'NoRAG %', data:refuseData.map(d=>d.norag), backgroundColor:'rgba(99,102,241,0.7)', borderColor:'#6366f1', borderWidth:1, borderRadius:3},
+      {label:'RAG %',   data:refuseData.map(d=>d.rag),   backgroundColor:'rgba(249,115,22,0.7)',  borderColor:'#f97316', borderWidth:1, borderRadius:3},
+    ]
+  },
+  options:{
+    responsive:true, maintainAspectRatio:true,
+    plugins:{legend:{position:'top',labels:{boxWidth:10,padding:12,font:{size:10}}}},
+    scales:{
+      x:{grid:{color:'#1e2d45'}},
+      y:{grid:{color:'#1e2d45'}, ticks:{callback:v=>v+'%'}}
+    }
+  }
+});
+
+// ======== REFUSAL PIE ========
+const totalRefuse = refuseData.map(d=>Math.round(d.norag/100*515 + d.rag/100*515));
+new Chart(document.getElementById('chartRefusalPie'), {
+  type:'doughnut',
+  data:{
+    labels: refuseData.map(d=>d.model),
+    datasets:[{
+      data: totalRefuse,
+      backgroundColor: modelColors.map(c=>c+'cc'),
+      borderColor: modelColors,
+      borderWidth:1.5,
+      hoverOffset:8,
+    }]
+  },
+  options:{
+    responsive:true, maintainAspectRatio:true,
+    cutout:'60%',
+    plugins:{
+      legend:{position:'bottom',labels:{boxWidth:10,padding:12,font:{size:10}}},
+      tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${ctx.parsed} refusals`}}
+    }
+  }
+});
+
+// ======== TAB SWITCH ========
+function switchTab(name) {
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('sec-'+name).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>
+</body>
+</html>
